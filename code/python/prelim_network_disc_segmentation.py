@@ -7,21 +7,23 @@ Purpose: perliminary network for training on optic disk segmentation
         using diaretdb1 dataset.
 """
 
-batch_size = 1
+batch_size = 5
 
 import h5py
 from PIL import Image
 import glob
 import numpy as np
 import matplotlib.pyplot as plt
-from keras.datasets import mnist
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Activation, Flatten
-from keras.layers import Convolution2D, MaxPooling2D, ZeroPadding2D
+from keras.layers.core import Layer, Dense, Dropout, Activation, Flatten, Reshape, Merge, Permute
+from keras.layers.convolutional import Convolution2D, MaxPooling2D, UpSampling2D, ZeroPadding2D
+from keras.layers.normalization import BatchNormalization
 from keras.utils import np_utils
 from keras import backend as K
 from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
 import gc
+
+K.set_image_dim_ordering('th')
 
 #K.set_image_dim_ordering('th')
 np.random.seed(7677)  # for reproducibility
@@ -37,6 +39,9 @@ y_test = np.array([np.array(Image.open(fname)) for fname in glob.glob(diaret_dir
 
 y_train = y_train.reshape(y_train.shape[0], y_train.shape[1], y_train.shape[2], 1)
 y_test = y_test.reshape(y_test.shape[0], y_test.shape[1], y_test.shape[2], 1)
+
+y_train = y_train.reshape(y_train.shape[0], 512*512, 1)
+y_test = y_test.reshape(y_test.shape[0], 512*512, 1)
 
 gc.collect()
 gc.collect()
@@ -129,66 +134,99 @@ test_mask_generator = test_mask_datagen.flow(
 test_generator = zip(test_image_generator, test_mask_generator)
 
 #define model
-nb_filters = 32
-pool_size = (2, 2)
-kernel_size = (3, 3)
+kernel = 3
+filter_size = 64
+pad = 1
+pool_size = 2
+
+enc_l = [
+        ZeroPadding2D(padding=(pad,pad)),
+        Convolution2D(filter_size, kernel, kernel, border_mode='valid'),
+        BatchNormalization(mode=1),
+        Activation('relu'),
+        MaxPooling2D(pool_size=(pool_size, pool_size)),
+
+        ZeroPadding2D(padding=(pad,pad)),
+        Convolution2D(128, kernel, kernel, border_mode='valid'),
+        BatchNormalization(mode=1),
+        Activation('relu'),
+        MaxPooling2D(pool_size=(pool_size, pool_size)),
+
+        ZeroPadding2D(padding=(pad,pad)),
+        Convolution2D(256, kernel, kernel, border_mode='valid'),
+        BatchNormalization(mode=1),
+        Activation('relu'),
+        MaxPooling2D(pool_size=(pool_size, pool_size)),
+
+        ZeroPadding2D(padding=(pad,pad)),
+        Convolution2D(512, kernel, kernel, border_mode='valid'),
+        BatchNormalization(mode=1),
+        Activation('relu'),
+    ]
+
+kernel = 3
+filter_size = 64
+pad = 1
+pool_size = 2
+dec_l = [
+    ZeroPadding2D(padding=(pad,pad)),
+    Convolution2D(512, kernel, kernel, border_mode='valid'),
+    BatchNormalization(mode=1),
+
+    UpSampling2D(size=(pool_size,pool_size)),
+    ZeroPadding2D(padding=(pad,pad)),
+    Convolution2D(256, kernel, kernel, border_mode='valid'),
+    BatchNormalization(mode=1),
+
+    UpSampling2D(size=(pool_size,pool_size)),
+    ZeroPadding2D(padding=(pad,pad)),
+    Convolution2D(128, kernel, kernel, border_mode='valid'),
+    BatchNormalization(mode=1),
+
+    UpSampling2D(size=(pool_size,pool_size)),
+    ZeroPadding2D(padding=(pad,pad)),
+    Convolution2D(filter_size, kernel, kernel, border_mode='valid'),
+    BatchNormalization(mode=1),
+]
 
 model = Sequential()
-
-model.add(ZeroPadding2D((1, 1), input_shape=input_shape))
-model.add(Convolution2D(16, 3, 3, activation='relu'))
-model.add(ZeroPadding2D((1, 1)))
-model.add(Dropout(0.25))
-model.add(Convolution2D(16, 3, 3, activation='relu'))
-model.add(Dropout(0.25))
-
-model.add(ZeroPadding2D((1, 1)))
-model.add(Convolution2D(32, 3, 3, activation='relu'))
-model.add(ZeroPadding2D((1, 1)))
-model.add(Dropout(0.25))
-model.add(Convolution2D(32, 3, 3, activation='relu'))
-model.add(Dropout(0.25))
-
-model.add(Convolution2D(1, 1, 1))
+model.add(Layer(input_shape=input_shape))
+for l in enc_l:
+    model.add(l)
+for l in dec_l:
+    model.add(l)
+model.add(Convolution2D(1, 1, 1, border_mode='valid',))
+model.add(Reshape((1,input_shape[1]*input_shape[2])))
+model.add(Permute((2, 1)))
 model.add(Activation('sigmoid'))
 
-model.compile(loss='mse',
-              optimizer='adam',
-              metrics=['accuracy'])
-#model = Sequential()
-              
-#model.add(Convolution2D(16, 5, 5,
-#                        border_mode='same',
-#                        input_shape=input_shape))
-#model.add(Activation('relu'))
-#model.add(Dropout(0.25))
-#
-#model.add(Convolution2D(16, 5, 5,
-#                        border_mode='same',
-#                        input_shape=input_shape))
-#model.add(Activation('relu'))
-#model.add(Dropout(0.25))
-#
-#model.add(Convolution2D(1, 1, 1, border_mode='same'))
-#model.add(Activation('sigmoid'))
-#
-#model.compile(loss='mse',
-#              optimizer='adam',
-#              metrics=['accuracy'])
+model.compile(loss="binary_crossentropy", optimizer='adam')
 
 model.fit_generator(
         train_generator,
-        samples_per_epoch=50,
-        nb_epoch=5,
+        samples_per_epoch=500,
+        nb_epoch=50,
         validation_data=test_generator,
-        nb_val_samples=50)
+        nb_val_samples=500)
         
-score = model.evaluate(X_test, y_test, verbose=0)
+score = model.evaluate(X_test/255., y_test.reshape(61, 512*512, 1)/255., verbose=0)
 print('Test score:', score[0])
 print('Test accuracy:', score[1])
 
 x = model.predict(X_train[0:1,:,:,:])
+x = x[0,:,:].reshape(512,512)
+plt.imshow(x, cmap='Greys_r')
+plt.figure()
+plt.imshow(y_train[0:1,:,:,:].reshape(512,512), cmap='Greys_r')
+
+x = model.predict(X_train[0:1,:,:,:])
 x = x[0,:,:,:].reshape(512,512)
 plt.imshow(x, cmap='Greys_r')
-
+plt.figure()
 plt.imshow(y_train[0:1,:,:,:].reshape(512,512), cmap='Greys_r')
+
+x = model.predict(X_test[0:1,:,:,:])
+x = x[0,:,:,:].reshape(512,512)
+plt.imshow(x, cmap='Greys_r')
+plt.figure()
+plt.imshow(y_test[0:1,:,:,:].reshape(512,512), cmap='Greys_r')
