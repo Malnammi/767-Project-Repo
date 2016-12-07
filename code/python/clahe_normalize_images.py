@@ -63,43 +63,43 @@ kaggle_dir = "G:/767-Project/datasets/kaggle"
 
 
 ##drive dataset
-image_files = glob.glob(drive_dir+"/training/images_512/*")
-output_dir = "G:/767-Project/datasets/drive/DRIVE/training/images_512_clahe/"
+image_files = glob.glob(drive_dir+"/training/images_128/*")
+output_dir = "G:/767-Project/datasets/drive/DRIVE/training/images_128_clahe/"
 for f in image_files:
     convert_and_write(f, output_dir)
     
-image_files = glob.glob(drive_dir+"/test/images_512/*")
-output_dir = "G:/767-Project/datasets/drive/DRIVE/test/images_512_clahe/"
+image_files = glob.glob(drive_dir+"/test/images_128/*")
+output_dir = "G:/767-Project/datasets/drive/DRIVE/test/images_128_clahe/"
 for f in image_files:
     convert_and_write(f, output_dir)
     
     
 ##stare dataset
-image_files = glob.glob(stare_dir+"/image_512/*")
-output_dir = "G:/767-Project/datasets/stare/vessel_segmentation/images_512_clahe/"
+image_files = glob.glob(stare_dir+"/images_128/*")
+output_dir = "G:/767-Project/datasets/stare/vessel_segmentation/images_128_clahe/"
 for f in image_files:
     convert_and_write(f, output_dir)
 
 
 ##diaretdb1 dataset
-image_files = glob.glob(diaret_dir+"/train/images_512/*")
-output_dir = "G:/767-Project/datasets/diaretdb1/train/images_512_clahe/"
+image_files = glob.glob(diaret_dir+"/train/images_128/*")
+output_dir = "G:/767-Project/datasets/diaretdb1/train/images_128_clahe/"
 for f in image_files:
     convert_and_write(f, output_dir)
     
-image_files = glob.glob(diaret_dir+"/test/images_512/*")
-output_dir = "G:/767-Project/datasets/diaretdb1/test/images_512_clahe/"
+image_files = glob.glob(diaret_dir+"/test/images_128/*")
+output_dir = "G:/767-Project/datasets/diaretdb1/test/images_128_clahe/"
 for f in image_files:
     convert_and_write(f, output_dir)
 
 def main():
     #kaggle dataset
-    image_files = glob.glob(kaggle_dir+"/train_512/*")
-    output_dir = "G:/767-Project/datasets/kaggle/train_512_clahe/"
+    image_files = glob.glob(kaggle_dir+"/train_128/*")
+    output_dir = "G:/767-Project/datasets/kaggle/train_128_clahe/"
     
     n = len(image_files)
     # process in batches, sometimes weird things happen with Pool on my machine
-    batchsize = 5000
+    batchsize = 20000
     batches = n // batchsize + 1
     pool = Pool(N_PROC)
     
@@ -116,12 +116,12 @@ def main():
     
     print('done')
     
-    image_files = glob.glob(kaggle_dir+"/test_512/*")
-    output_dir = "G:/767-Project/datasets/kaggle/test_512_clahe/"
+    image_files = glob.glob(kaggle_dir+"/test_128/*")
+    output_dir = "G:/767-Project/datasets/kaggle/test_128_clahe/"
         
     n = len(image_files)
     # process in batches, sometimes weird things happen with Pool on my machine
-    batchsize = 5000
+    batchsize = 20000
     batches = n // batchsize + 1
     pool = Pool(N_PROC)
     

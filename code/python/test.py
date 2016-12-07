@@ -10,7 +10,7 @@ Purpose: perliminary network for training on optic disk segmentation
 batch_size = 32
 
 import theano.sandbox.cuda
-theano.sandbox.cuda.use("gpu1")
+theano.sandbox.cuda.use("gpu0")
 
 import h5py
 from PIL import Image
@@ -143,7 +143,6 @@ def get_vgg_16(input_shape, weights_path=None, nb_classes=None):
     model.add(Convolution2D(64, 3, 3, activation='relu'))
     
     model.add(Convolution2D(1, 1, 1, border_mode='valid'))
-    model.add(Activation('sigmoid'))
 
     return model
 
@@ -291,8 +290,6 @@ def get_bnorm_vgg_16(input_shape, weights_path=None, nb_classes=None):
     model.add(Activation('relu'))
     
     model.add(Convolution2D(1, 1, 1, border_mode='valid'))
-    BatchNormalization(mode=1)
-    model.add(Activation('sigmoid'))
 
     return model
     
@@ -331,16 +328,19 @@ def get_segnet(input_shape, weights_path=None):
         ZeroPadding2D(padding=(pad,pad)),
         Convolution2D(128, kernel, kernel, border_mode='valid'),
         BatchNormalization(mode=1),
+        Activation('relu'),
     
         UpSampling2D(size=(pool_size,pool_size)),
         ZeroPadding2D(padding=(pad,pad)),
         Convolution2D(64, kernel, kernel, border_mode='valid'),
         BatchNormalization(mode=1),
+        Activation('relu'),
     
         UpSampling2D(size=(pool_size,pool_size)),
         ZeroPadding2D(padding=(pad,pad)),
         Convolution2D(32, kernel, kernel, border_mode='valid'),
-        BatchNormalization(mode=1)
+        BatchNormalization(mode=1),
+        Activation('relu'),
     ]
     
     model = Sequential()
@@ -353,7 +353,6 @@ def get_segnet(input_shape, weights_path=None):
         model.load_weights(weights_path)
 
     model.add(Convolution2D(1, 1, 1, border_mode='valid'))
-    model.add(Activation('sigmoid'))
     return model
     
 """
@@ -369,14 +368,14 @@ def get_simplenet(input_shape, weights_path=None):
             ZeroPadding2D((pad,pad),input_shape=input_shape),
             Convolution2D(32, kernel, kernel, border_mode='valid'),
             BatchNormalization(mode=1),
-            Activation(ELU()),
-            Dropout(0.25),
+            Activation('sigmoid'),
+            Dropout(0.5),
             MaxPooling2D(pool_size=(pool_size, pool_size)),
             ZeroPadding2D((pad,pad),input_shape=input_shape),
             Convolution2D(16, kernel, kernel, border_mode='valid'),
             BatchNormalization(mode=1),
-            Activation(ELU()),
-            Dropout(0.25),
+            Activation('sigmoid'),
+            Dropout(0.5),
             MaxPooling2D(pool_size=(pool_size, pool_size))
         ]
     
@@ -388,14 +387,14 @@ def get_simplenet(input_shape, weights_path=None):
         ZeroPadding2D(padding=(pad,pad)),
         Convolution2D(16, kernel, kernel, border_mode='valid'),
         BatchNormalization(mode=1),
-        Activation(ELU()),
-        Dropout(0.25),
+        Activation('sigmoid'),
+        Dropout(0.5),
         UpSampling2D(size=(pool_size,pool_size)),
         ZeroPadding2D(padding=(pad,pad)),
         Convolution2D(32, kernel, kernel, border_mode='valid'),
         BatchNormalization(mode=1),
-        Activation(ELU()),
-        Dropout(0.25)
+        Activation('sigmoid'),
+        Dropout(0.5)
     ]
     
     model = Sequential()
@@ -408,8 +407,6 @@ def get_simplenet(input_shape, weights_path=None):
         model.load_weights(weights_path)
 
     model.add(Convolution2D(1, 1, 1, border_mode='valid'))
-    BatchNormalization(mode=1)
-    model.add(Activation('sigmoid'))
     return model
 
 """#################################START OF CODE###########################"""
@@ -430,8 +427,8 @@ y_test = np.array([np.array(Image.open(fname)) for fname in glob.glob(diaret_dir
 y_train = y_train.reshape(y_train.shape[0], y_train.shape[1], y_train.shape[2], 1)
 y_test = y_test.reshape(y_test.shape[0], y_test.shape[1], y_test.shape[2], 1)
 
-y_train = y_train.reshape(y_train.shape[0], 128,128, 1)
-y_test = y_test.reshape(y_test.shape[0], 128,128, 1)
+y_train = y_train.reshape(y_train.shape[0], 128*128, 1)
+y_test = y_test.reshape(y_test.shape[0], 128*128, 1)
 
 gc.collect()
 gc.collect()
@@ -455,8 +452,8 @@ else:
     X_train = X_train.reshape(X_train.shape[0], img_rows, img_cols, img_depth)
     X_test = X_test.reshape(X_test.shape[0], img_rows, img_cols, img_depth)
     
-    y_train = y_train.reshape(y_train.shape[0], img_rows,img_cols, 1)
-    y_test = y_test.reshape(y_test.shape[0], img_rows,img_cols, 1)
+    y_train = y_train.reshape(y_train.shape[0], img_rows*img_cols, 1)
+    y_test = y_test.reshape(y_test.shape[0], img_rows*img_cols, 1)
     
     input_shape = (img_rows, img_cols, img_depth)
     output_shape = (img_rows, img_cols, 1)
@@ -468,108 +465,36 @@ y_train = y_train.astype('float32')
 y_test = y_test.astype('float32')
 
 
-"""################################DATA AUGMENTORS##########################"""
-#specify datagenerator for real-time augmentation
-datagen = ImageDataGenerator(
-        rotation_range=180,
-        rescale=1./255,
-        shear_range=0.2,
-        zoom_range=0.2,
-        horizontal_flip=True,
-        vertical_flip=True,
-        fill_mode='nearest')
-
-#training dataset
-#create two datagenerators one for input and out for output masks
-train_data_gen_args = dict(rotation_range=180,
-                    rescale=1./255,
-                    shear_range=0.2,
-                    zoom_range=0.2,
-                    horizontal_flip=True,
-                    vertical_flip=True,
-                    fill_mode='nearest')
-train_image_datagen = ImageDataGenerator(**train_data_gen_args)
-train_mask_datagen = ImageDataGenerator(**train_data_gen_args)
-
-seed = 1
-train_image_generator = train_image_datagen.flow(
-    X_train,
-    batch_size=batch_size,
-    seed=seed)
-
-train_mask_generator = train_mask_datagen.flow(
-    y_train,
-    batch_size=batch_size,
-    seed=seed)
-
-# combine generators into one which yields image and masks
-train_generator = zip(train_image_generator, train_mask_generator)
-
-#test dataset
-#create two datagenerators one for input and out for output masks
-test_data_gen_args = dict(rescale=1./255)
-test_image_datagen = ImageDataGenerator(**test_data_gen_args)
-test_mask_datagen = ImageDataGenerator(**test_data_gen_args)
-
-seed = 1
-test_image_generator = test_image_datagen.flow(
-    X_test,
-    batch_size=batch_size,
-    seed=seed)
-
-test_mask_generator = test_mask_datagen.flow(
-    y_test,
-    batch_size=batch_size,
-    seed=seed)
-
-# combine generators into one which yields image and masks
-test_generator = zip(test_image_generator, test_mask_generator)
-
 
 """############################MODEL AND TRAINING###########################"""
 #define model
-#model = get_simplenet(input_shape=input_shape)
-model = get_vgg_16(input_shape=input_shape, weights_path=vgg_w)
+model = get_simplenet(input_shape=input_shape)
+#model.add(Reshape((1,128*128)))
+model.add(Activation('sigmoid'))
+
 model.compile(optimizer="adam", loss="binary_crossentropy", metrics=[dice_coef])
-#model.compile(optimizer=keras.optimizers.SGD(lr=0.01, momentum=0.9, decay=0.0005), loss="mse", metrics=[dice_coef])
-#model.compile(loss="binary_crossentropy", optimizer=
-#            keras.optimizers.Adamax(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0))
-model.fit_generator(
-        train_generator,
-        samples_per_epoch=256,
-        nb_epoch=128,
-        validation_data=test_generator,
-        nb_val_samples=28)
-        
-model.fit(X_train/255., y_train.reshape(28, 128*128, 1)/255., batch_size=10,
-          validation_data=(X_test/255., y_test.reshape(28, 128*128, 1)/255.),
-          nb_epoch=50)
+model.fit(X_train/255., y_train/255., batch_size=32,
+          validation_data=(X_test/255., y_test/255.),
+          nb_epoch=1000)
+#model.compile(optimizer="adam", loss="binary_crossentropy", metrics=[dice_coef])
+model.fit(X_train/255., y_train/255., batch_size=32,
+          validation_data=(X_test/255., y_test/255.),
+          nb_epoch=1000)
+          
 
 score = model.evaluate(X_test/255., y_test/255., verbose=0)
 print('Test score:', score[0])
 print('Test accuracy:', score[1])
 
+x = model.predict(X_train[0:1,:,:,:]/255.)
+x = x[0,:,:].reshape(128,128)
+plt.imshow(x>0.5, cmap='Greys_r')
+plt.figure()
+plt.imshow(y_train[0:1,:,:].reshape(128,128), cmap='Greys_r')
 
-fig = plt.figure()
-a=fig.add_subplot(1,3,1)
-plt.imshow(X_train[0:1,:,:,:].reshape(128,128,3)/255)
-a.set_title('input_image')
-a=fig.add_subplot(1,3,2)
-plt.imshow(y_train[0:1,:,:,:].reshape(128,128), cmap='Greys_r')
-a.set_title('true_label')
-a=fig.add_subplot(1,3,3)
-y_thresholded = model.predict(X_train[0:1,:,:,:]/255.).reshape(128,128) > 0.5
-plt.imshow(y_thresholded, cmap='Greys_r')
-a.set_title('model_thresh')
 
-fig = plt.figure()
-a=fig.add_subplot(1,3,1)
-plt.imshow(X_test[0:1,:,:,:].reshape(128,128,3)/255)
-a.set_title('input_image')
-a=fig.add_subplot(1,3,2)
-plt.imshow(y_test[0:1,:,:,:].reshape(128,128), cmap='Greys_r')
-a.set_title('true_label')
-a=fig.add_subplot(1,3,3)
-y_thresholded = model.predict(X_test[0:1,:,:,:]/255.).reshape(128,128) > 0.5
-plt.imshow(y_thresholded, cmap='Greys_r')
-a.set_title('model_thresh')
+x = model.predict(X_test[0:1,:,:,:]/255.)
+x = x[0,:,:].reshape(128,128)
+plt.imshow(x > 0.5, cmap='Greys_r')
+plt.figure()
+plt.imshow(y_test[0:1,:,:].reshape(128,128), cmap='Greys_r')
