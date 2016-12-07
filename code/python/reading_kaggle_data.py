@@ -59,147 +59,40 @@ np.random.seed(7677)  # for reproducibility
 kaggle_dir = "G:/767-Project/datasets/kaggle"
 
 train_labels = pd.read_csv(kaggle_dir+"/trainLabels.csv")
-test_labels = pd.read_csv(kaggle_dir+"/testLabels.csv")
+test_labels = pd.read_csv(kaggle_dir+"/testLabels.csv", usecols=['image', 'level'])
 
 # get some stats
 train_labels.groupby('level').agg('count')
+test_labels.groupby('level').agg('count')
 
-#load training sets
-X_train = np.array([np.array(Image.open(fname)) for fname in glob.glob(kaggle_dir+"/train/images_128_clahe/*")])
-y_train = np.array([np.array(Image.open(fname)) for fname in glob.glob(kaggle_dir+"/train/disc_128/*")])
-X_test = np.array([np.array(Image.open(fname)) for fname in glob.glob(kaggle_dir+"/test/images_128_clahe/*")])
-y_test = np.array([np.array(Image.open(fname)) for fname in glob.glob(kaggle_dir+"/test/disc_128/*")])
+# select 400 files to be training for each class
+train_files = pd.concat([train_labels[train_labels.level==0][0:400],
+          train_labels[train_labels.level==1][0:400],
+          train_labels[train_labels.level==2][0:400],
+          train_labels[train_labels.level==3][0:400],
+          train_labels[train_labels.level==4][0:400]])
 
-y_train = y_train.reshape(y_train.shape[0], y_train.shape[1], y_train.shape[2], 1)
-y_test = y_test.reshape(y_test.shape[0], y_test.shape[1], y_test.shape[2], 1)
+# select 400 files to be testing for each class
+test_files = pd.concat([test_labels[test_labels.level==0][0:400],
+          test_labels[test_labels.level==1][0:400],
+          test_labels[test_labels.level==2][0:400],
+          test_labels[test_labels.level==3][0:400],
+          test_labels[test_labels.level==4][0:400]])
+          
+# write to csv file
+train_files.to_csv("myTrainLabels.csv", index=False)
+test_files.to_csv("myTestLabels.csv", index=False)
 
-y_train = y_train.reshape(y_train.shape[0], 128,128, 1)
-y_test = y_test.reshape(y_test.shape[0], 128,128, 1)
+# load training and test data
+X_train = np.array([np.array(Image.open(fname)) for fname in 
+                    [kaggle_dir+"/train_128_clahe/"+f+".png" for f in list(train_files['image'])]])
+y_train = train_files['level'].as_matrix()
+X_test =  np.array([np.array(Image.open(fname)) for fname in 
+                    [kaggle_dir+"/test_128_clahe/"+f+".png" for f in list(test_files['image'])]])
+y_test = test_files['level'].as_matrix()
 
-gc.collect()
-gc.collect()
-gc.collect()
-
-#now reshape appropriately
-# input image dimensions
-img_rows, img_cols, img_depth = 128, 128, 3
-
-
-if K.image_dim_ordering() == 'th':
-    X_train = X_train.reshape(X_train.shape[0], img_depth, img_rows, img_cols)
-    X_test = X_test.reshape(X_test.shape[0], img_depth, img_rows, img_cols)
-
-    y_train = y_train.reshape(y_train.shape[0], 1, img_rows,img_cols)
-    y_test = y_test.reshape(y_test.shape[0], 1, img_rows,img_cols)
-    
-    input_shape = (img_depth, img_rows, img_cols)
-    output_shape = (1, img_rows, img_cols)
-else:
-    X_train = X_train.reshape(X_train.shape[0], img_rows, img_cols, img_depth)
-    X_test = X_test.reshape(X_test.shape[0], img_rows, img_cols, img_depth)
-    
-    y_train = y_train.reshape(y_train.shape[0], img_rows,img_cols, 1)
-    y_test = y_test.reshape(y_test.shape[0], img_rows,img_cols, 1)
-    
-    input_shape = (img_rows, img_cols, img_depth)
-    output_shape = (img_rows, img_cols, 1)
-
-X_train = X_train.astype('float32')
-X_test = X_test.astype('float32')
-
-y_train = y_train.astype('float32')
-y_test = y_test.astype('float32')
-
-
-"""################################DATA AUGMENTORS##########################"""
-#specify datagenerator for real-time augmentation
-datagen = ImageDataGenerator(
-        rotation_range=180,
-        rescale=1./255,
-        shear_range=0.2,
-        zoom_range=0.2,
-        horizontal_flip=True,
-        vertical_flip=True,
-        fill_mode='nearest')
-
-#training dataset
-#create two datagenerators one for input and out for output masks
-train_data_gen_args = dict(rotation_range=180,
-                    rescale=1./255,
-                    shear_range=0.2,
-                    zoom_range=0.2,
-                    horizontal_flip=True,
-                    vertical_flip=True,
-                    fill_mode='nearest')
-train_image_datagen = ImageDataGenerator(**train_data_gen_args)
-train_mask_datagen = ImageDataGenerator(**train_data_gen_args)
-
-seed = 1
-train_image_generator = train_image_datagen.flow(
-    X_train,
-    batch_size=batch_size,
-    seed=seed)
-
-train_mask_generator = train_mask_datagen.flow(
-    y_train,
-    batch_size=batch_size,
-    seed=seed)
-
-# combine generators into one which yields image and masks
-train_generator = zip(train_image_generator, train_mask_generator)
-
-#test dataset
-#create two datagenerators one for input and out for output masks
-test_data_gen_args = dict(rescale=1./255)
-test_image_datagen = ImageDataGenerator(**test_data_gen_args)
-test_mask_datagen = ImageDataGenerator(**test_data_gen_args)
-
-seed = 1
-test_image_generator = test_image_datagen.flow(
-    X_test,
-    batch_size=batch_size,
-    seed=seed)
-
-test_mask_generator = test_mask_datagen.flow(
-    y_test,
-    batch_size=batch_size,
-    seed=seed)
-
-# combine generators into one which yields image and masks
-test_generator = zip(test_image_generator, test_mask_generator)
-
-
-"""############################MODEL AND TRAINING###########################"""
-#define model
-model = get_disc_segnet(input_shape=input_shape)
-
-model.compile(loss=dice_coef_loss, optimizer='adam', 
-              metrics=[dice_coef])
-              
-model.load_weights('weights/disc_seg.h5')
-        
-fig = plt.figure()
-a=fig.add_subplot(1,3,1)
-plt.imshow(X_train[0:1,:,:,:].reshape(128,128,3)/255)
-a.set_title('input_image')
-a=fig.add_subplot(1,3,2)
-plt.imshow(y_train[0:1,:,:,:].reshape(128,128), cmap='Greys_r')
-a.set_title('true_label')
-a=fig.add_subplot(1,3,3)
-y_thresholded = model.predict(X_train[0:1,:,:,:]/255.).reshape(128,128) > 0.5
-plt.imshow(y_thresholded, cmap='Greys_r')
-a.set_title('model_thresh')
-
-fig = plt.figure()
-a=fig.add_subplot(1,3,1)
-plt.imshow(X_test[0:1,:,:,:].reshape(128,128,3)/255)
-a.set_title('input_image')
-a=fig.add_subplot(1,3,2)
-plt.imshow(y_test[0:1,:,:,:].reshape(128,128), cmap='Greys_r')
-a.set_title('true_label')
-a=fig.add_subplot(1,3,3)
-y_thresholded = model.predict(X_test[0:1,:,:,:]/255.).reshape(128,128) > 0.1
-plt.imshow(y_thresholded, cmap='Greys_r')
-a.set_title('model_thresh')
-
-np_dice_coef(y_train, model.predict(X_train) > 0.5)
+# save numpy arrays
+np.save(kaggle_dir+"/X_train", X_train)
+np.save(kaggle_dir+"/y_train", y_train)
+np.save(kaggle_dir+"/X_test", X_test)
+np.save(kaggle_dir+"/y_test", y_test)

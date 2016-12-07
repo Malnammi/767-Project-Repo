@@ -7,7 +7,7 @@ Purpose: perliminary network for training on optic disk segmentation
         using diaretdb1 dataset.
 """
 
-batch_size = 16
+batch_size = 64
 
 import theano.sandbox.cuda
 theano.sandbox.cuda.use("gpu0")
@@ -28,6 +28,36 @@ from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_a
 import gc
 import keras.optimizers
 K.set_image_dim_ordering('th')
+
+"""
+    Function that returns the hidden layer output.
+"""
+def get_activations(model, layer_num, X_batch):
+    get_activations = K.function([model.layers[0].input, K.learning_phase()], 
+                                 model.layers[layer_num].output)
+    activations = get_activations([X_batch,0])
+    return activations
+    
+"""
+    Plots feature maps.
+"""
+def plot_feature_maps(feature_maps, start_index, end_index):
+    feature_maps = feature_maps.reshape(feature_maps.shape[1],
+                                        feature_maps.shape[2],
+                                        feature_maps.shape[3])
+    
+    fig = plt.figure()
+    end_index = min(end_index, feature_maps.shape[0])
+    
+    num_plots = end_index - start_index
+    n_rows = num_plots/5
+    n_cols = 5
+    
+    for i in range(num_plots):     
+        a=fig.add_subplot(n_rows,n_cols,i+1)
+        plt.imshow(feature_maps[start_index+i], cmap='Greys_r')
+        a.set_title('fmap'+str(start_index+i))
+        
 
 """
     Dice coefficient calculation and loss. Credit goes to: github.com/jocicmarko/ultrasound-nerve-segmentation/blob/master/train.py#L19
@@ -142,25 +172,23 @@ def get_disc_segnet(input_shape, weights_path=None):
 np.random.seed(7677)  # for reproducibility
 
 #define dataset directories
-vgg_w = "G:/767-Project/weights/vgg16_weights.h5"
-segnet_w = "G:/767-Project/weights/segnet.hdf5"
-diaret_dir = "G:/767-Project/datasets/diaretdb1/"
+kaggle_dir = "G:/767-Project/datasets/kaggle"
 
 #load training sets
-X_train = np.array([np.array(Image.open(fname)) for fname in glob.glob(diaret_dir+"/train/images_128_clahe/*")])
-y_train = np.array([np.array(Image.open(fname)) for fname in glob.glob(diaret_dir+"/train/disc_128/*")])
-X_test = np.array([np.array(Image.open(fname)) for fname in glob.glob(diaret_dir+"/test/images_128_clahe/*")])
-y_test = np.array([np.array(Image.open(fname)) for fname in glob.glob(diaret_dir+"/test/disc_128/*")])
+X_train = np.load(kaggle_dir+"/X_train.npy")
+y_train = np.load(kaggle_dir+"/y_train.npy")
+X_test = np.load(kaggle_dir+"/X_test.npy")
+y_test = np.load(kaggle_dir+"/y_test.npy")
 
-y_train = y_train.reshape(y_train.shape[0], y_train.shape[1], y_train.shape[2], 1)
-y_test = y_test.reshape(y_test.shape[0], y_test.shape[1], y_test.shape[2], 1)
-
-y_train = y_train.reshape(y_train.shape[0], 128,128, 1)
-y_test = y_test.reshape(y_test.shape[0], 128,128, 1)
+# convert class vectors to binary class matrices
+nb_classes=5
+y_train = np_utils.to_categorical(y_train, nb_classes)
+y_test = np_utils.to_categorical(y_test, nb_classes)
 
 gc.collect()
 gc.collect()
 gc.collect()
+
 
 #now reshape appropriately
 # input image dimensions
@@ -170,18 +198,12 @@ img_rows, img_cols, img_depth = 128, 128, 3
 if K.image_dim_ordering() == 'th':
     X_train = X_train.reshape(X_train.shape[0], img_depth, img_rows, img_cols)
     X_test = X_test.reshape(X_test.shape[0], img_depth, img_rows, img_cols)
-
-    y_train = y_train.reshape(y_train.shape[0], 1, img_rows,img_cols)
-    y_test = y_test.reshape(y_test.shape[0], 1, img_rows,img_cols)
     
     input_shape = (img_depth, img_rows, img_cols)
     output_shape = (1, img_rows, img_cols)
 else:
     X_train = X_train.reshape(X_train.shape[0], img_rows, img_cols, img_depth)
     X_test = X_test.reshape(X_test.shape[0], img_rows, img_cols, img_depth)
-    
-    y_train = y_train.reshape(y_train.shape[0], img_rows,img_cols, 1)
-    y_test = y_test.reshape(y_test.shape[0], img_rows,img_cols, 1)
     
     input_shape = (img_rows, img_cols, img_depth)
     output_shape = (img_rows, img_cols, 1)
@@ -193,6 +215,32 @@ y_train = y_train.astype('float32')
 y_test = y_test.astype('float32')
 
 
+#load disc model
+model_disc = get_disc_segnet(input_shape=input_shape)
+
+model_disc.compile(loss=dice_coef_loss, optimizer='adam', 
+              metrics=[dice_coef])
+              
+model_disc.load_weights('weights/disc_seg.h5')
+        
+
+#generate disc segmented kaggle images
+train_disc = model_disc.predict(X_train)
+test_disc =  model_disc.predict(X_test)
+
+#concatenate with kaggle images
+X_train = np.concatenate((X_train, train_disc), axis=1)
+X_test = np.concatenate((X_test, test_disc), axis=1)
+
+X_train = X_train.astype('float32')
+X_test = X_test.astype('float32')
+
+y_train = y_train.astype('float32')
+y_test = y_test.astype('float32')
+
+img_rows, img_cols, img_depth = 128, 128, 4
+input_shape = (img_depth, img_rows, img_cols)
+
 """################################DATA AUGMENTORS##########################"""
 #specify datagenerator for real-time augmentation
 datagen = ImageDataGenerator(
@@ -201,7 +249,6 @@ datagen = ImageDataGenerator(
         shear_range=0.2,
         zoom_range=0.2,
         horizontal_flip=True,
-        vertical_flip=True,
         fill_mode='nearest')
 
 #training dataset
@@ -211,77 +258,112 @@ train_data_gen_args = dict(rotation_range=180,
                     shear_range=0.2,
                     zoom_range=0.2,
                     horizontal_flip=True,
-                    vertical_flip=True,
                     fill_mode='nearest')
 train_image_datagen = ImageDataGenerator(**train_data_gen_args)
-train_mask_datagen = ImageDataGenerator(**train_data_gen_args)
 
 seed = 1
-train_image_generator = train_image_datagen.flow(
+train_generator = train_image_datagen.flow(
     X_train,
-    batch_size=batch_size,
-    seed=seed)
-
-train_mask_generator = train_mask_datagen.flow(
     y_train,
     batch_size=batch_size,
     seed=seed)
 
-# combine generators into one which yields image and masks
-train_generator = zip(train_image_generator, train_mask_generator)
 
 #test dataset
 #create two datagenerators one for input and out for output masks
 test_data_gen_args = dict(rescale=1./255)
 test_image_datagen = ImageDataGenerator(**test_data_gen_args)
-test_mask_datagen = ImageDataGenerator(**test_data_gen_args)
 
 seed = 1
-test_image_generator = test_image_datagen.flow(
+test_generator = test_image_datagen.flow(
     X_test,
-    batch_size=batch_size,
-    seed=seed)
-
-test_mask_generator = test_mask_datagen.flow(
     y_test,
     batch_size=batch_size,
     seed=seed)
 
-# combine generators into one which yields image and masks
-test_generator = zip(test_image_generator, test_mask_generator)
-
 
 """############################MODEL AND TRAINING###########################"""
-#define model
-model = get_disc_segnet(input_shape=input_shape)
+"""
+    adapted design from: http://jeffreydf.github.io/diabetic-retinopathy-detection/
+"""
 
-model.compile(loss=dice_coef_loss, optimizer='adam', 
-              metrics=[dice_coef])
-              
-model.load_weights('weights/disc_seg.h5')
+#define model
+model = Sequential()
+
+model.add(Convolution2D(32,7,7, subsample=(2,2), input_shape=input_shape))
+model.add(Activation(LeakyReLU(0.5)))
+model.add(MaxPooling2D(pool_size=(3, 3), strides=(2,2)))
+
+model.add(Convolution2D(32,3,3, subsample=(1,1)))        
+model.add(Activation(LeakyReLU(0.5)))
+model.add(Convolution2D(32,3,3, subsample=(1,1)))        
+model.add(Activation(LeakyReLU(0.5)))
+model.add(MaxPooling2D(pool_size=(3, 3), strides=(2,2)))
+
+model.add(Convolution2D(64,3,3, subsample=(1,1)))     
+model.add(Activation(LeakyReLU(0.5)))   
+model.add(Convolution2D(64,3,3, subsample=(1,1)))
+model.add(Activation(LeakyReLU(0.5)))        
+model.add(MaxPooling2D(pool_size=(3, 3), strides=(2,2)))
+
+#model.add(Convolution2D(128,3,3, subsample=(1,1)))        
+#model.add(Convolution2D(128,3,3, subsample=(1,1)))      
+#model.add(Convolution2D(128,3,3, subsample=(1,1)))        
+#model.add(Convolution2D(128,3,3, subsample=(1,1)))    
+#model.add(MaxPooling2D(pool_size=(3, 3), strides=(2,2)))
+
+#model.add(Convolution2D(256,3,3, subsample=(1,1)))        
+#model.add(Convolution2D(256,3,3, subsample=(1,1)))      
+#model.add(Convolution2D(256,3,3, subsample=(1,1)))        
+#model.add(Convolution2D(256,3,3, subsample=(1,1)))    
+#model.add(MaxPooling2D(pool_size=(3, 3), strides=(2,2)))
+
+model.add(Dropout(0.25))
+
+model.add(Flatten())
+model.add(Dense(64))
+model.add(Dropout(0.25))
+model.add(Activation('relu'))
+model.add(Dense(nb_classes))
+model.add(Activation('softmax'))
+
+model.compile(loss='categorical_crossentropy', optimizer='adam', 
+              metrics=['accuracy'])
+
+          
+model.fit_generator(
+        train_generator,
+        samples_per_epoch=len(X_train),
+        nb_epoch=100,
+        validation_data=test_generator,
+        nb_val_samples=len(X_test))
+  
+model.fit(X_train/255, y_train, batch_size=32,
+          nb_epoch=1,
+          validation_data=(X_test/255, y_test))
+          
         
 fig = plt.figure()
-a=fig.add_subplot(1,3,1)
+a=fig.add_subplot(1,2,1)
 plt.imshow(X_train[0:1,:,:,:].reshape(128,128,3)/255)
 a.set_title('input_image')
-a=fig.add_subplot(1,3,2)
-plt.imshow(y_train[0:1,:,:,:].reshape(128,128), cmap='Greys_r')
-a.set_title('true_label')
-a=fig.add_subplot(1,3,3)
+a=fig.add_subplot(1,2,2)
 y_thresholded = model.predict(X_train[0:1,:,:,:]/255.).reshape(128,128) > 0.5
 plt.imshow(y_thresholded, cmap='Greys_r')
 a.set_title('model_thresh')
 
 fig = plt.figure()
-a=fig.add_subplot(1,3,1)
+a=fig.add_subplot(1,2,1)
 plt.imshow(X_test[0:1,:,:,:].reshape(128,128,3)/255)
 a.set_title('input_image')
-a=fig.add_subplot(1,3,2)
-plt.imshow(y_test[0:1,:,:,:].reshape(128,128), cmap='Greys_r')
-a.set_title('true_label')
-a=fig.add_subplot(1,3,3)
-y_thresholded = model.predict(X_test[0:1,:,:,:]/255.).reshape(128,128) > 0.1
+a=fig.add_subplot(1,2,2)
+y_thresholded = model.predict(X_test[0:1,:,:,:]/255.).reshape(128,128) > 0.5
 plt.imshow(y_thresholded, cmap='Greys_r')
 a.set_title('model_thresh')
 
-np_dice_coef(y_train, model.predict(X_train) > 0.5)
+feature_maps = get_activations(model, 1, X_train[0:1])
+plot_feature_maps(feature_maps, 0, 10)
+
+quadratic_weighted_kappa(np.argmax(y_train, axis=1), np.argmax(model.predict(X_train), axis=1))
+
+quadratic_weighted_kappa(np.argmax(y_test, axis=1), np.argmax(model.predict(X_test), axis=1))

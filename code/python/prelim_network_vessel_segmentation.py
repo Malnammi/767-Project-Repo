@@ -274,15 +274,28 @@ test_generator = zip(test_image_generator, test_mask_generator)
 #model.compile(loss=dice_coef_loss, optimizer='adam', 
 #              metrics=[dice_coef])
 
-model = get_segnet(input_shape)
+model = Sequential()
 
-model.compile(optimizer='adam',
+model.add(Convolution2D(64,3,3, input_shape=input_shape, border_mode='same', 
+                        activation='relu'))
+model.add(MaxPooling2D())
+model.add(Activation('relu'))
+model.add(MaxPooling2D())
+model.add(Activation('relu'))
+model.add(Flatten())
+model.add(Dense(128*128, activation='sigmoid'))
+#
+#model.add(Convolution2D(1,3,3, border_mode='same', activation='sigmoid'))
+
+model.compile(optimizer='adadelta',
                loss=dice_coef_loss,
                metrics=[dice_coef])
-
-model.fit(X_train/255, y_train.reshape(y_train.shape[0], 1, 128*128)/255, batch_size=32,
+#model.fit(X_train/255, y_train/255, batch_size=32,
+#          nb_epoch=1000,
+#          validation_data=(X_test/255, y_test/255))
+model.fit(X_train/255, y_train.reshape(y_train.shape[0], 128*128)/255, batch_size=32,
           nb_epoch=1000,
-          validation_data=(X_test/255, y_test.reshape(y_test.shape[0], 1, 128*128)/255))
+          validation_data=(X_test/255, y_test.reshape(y_test.shape[0], 128*128)/255))
 #model = get_simplenet(input_shape)
 model.fit_generator(
         train_generator,
@@ -315,6 +328,6 @@ a=fig.add_subplot(1,3,2)
 plt.imshow(y_test[0:1,:,:,:].reshape(128,128), cmap='Greys_r')
 a.set_title('true_label')
 a=fig.add_subplot(1,3,3)
-y_thresholded = model.predict(X_test[0:1,:,:,:]/255.).reshape(128,128) > 0.5
+y_thresholded = model.predict(X_test[0:1,:,:,:]/255.).reshape(128,128)
 plt.imshow(y_thresholded, cmap='Greys_r')
 a.set_title('model_thresh')
