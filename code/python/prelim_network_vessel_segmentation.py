@@ -6,10 +6,10 @@ Created on Sun Nov 13 23:58:05 2016
 Purpose: perliminary network for training on vessel segmentation using drive
         and stare datasets.
 """
-batch_size = 5000
+batch_size = 32
 
 import theano.sandbox.cuda
-theano.sandbox.cuda.use("gpu1")
+theano.sandbox.cuda.use("gpu0")
 
 from keras.models import Model
 from PIL import Image
@@ -113,8 +113,6 @@ def get_segnet(input_shape, weights_path=None):
         model.load_weights(weights_path)
 
     model.add(Convolution2D(1, 1, 1, border_mode='valid'))
-    model.add(Reshape((1,128*128)))
-    model.add(Permute((2,1)))
     model.add(Activation('sigmoid'))
     return model
     
@@ -159,7 +157,35 @@ def get_simplenet(input_shape, weights_path=None):
 
     return model
 
+def get_vgg_16(weights_path=None):
+    model = Sequential()
+#    model.add(Convolution2D(64, 3, 3, input_shape=(3,128,128), activation='relu', border_mode='same'))
+#    model.add(Convolution2D(64, 3, 3, activation='relu', border_mode='same'))
+#    
+#    model.add(Convolution2D(32, 3, 3, activation='relu', border_mode='same'))
+#    model.add(Convolution2D(32, 3, 3, activation='relu', border_mode='same'))
+#    
+#    model.add(Convolution2D(16, 3, 3, activation='relu', border_mode='same'))
+#    model.add(Convolution2D(16, 3, 3, activation='relu', border_mode='same'))
+#    
+#    model.add(Convolution2D(8, 3, 3, activation='relu', border_mode='same'))
+#    model.add(Convolution2D(8, 3, 3, activation='relu', border_mode='same'))
+#    
+#    model.add(Convolution2D(4, 3, 3, activation='relu', border_mode='same'))
+#    model.add(Convolution2D(4, 3, 3, activation='relu', border_mode='same'))
+#
+#    model.add(Convolution2D(2, 3, 3, activation='relu', border_mode='same'))
+#    model.add(Convolution2D(2, 3, 3, activation='relu', border_mode='same'))    
+#    
+    model.add(Convolution2D(1024, 10, 10, activation='relu', border_mode='same', input_shape=(3,128,128)))
+    model.add(Convolution2D(1, 3, 3, activation='sigmoid', border_mode='same'))     
+    
+    
+    if weights_path:
+        model.load_weights(weights_path)
 
+    return model
+    
 #
 np.random.seed(7677)  # for reproducibility
 
@@ -274,36 +300,27 @@ test_generator = zip(test_image_generator, test_mask_generator)
 #model.compile(loss=dice_coef_loss, optimizer='adam', 
 #              metrics=[dice_coef])
 
-model = Sequential()
+#model = get_segnet(input_shape)
+#               
 
-model.add(Convolution2D(64,3,3, input_shape=input_shape, border_mode='same', 
-                        activation='relu'))
-model.add(MaxPooling2D())
-model.add(Activation('relu'))
-model.add(MaxPooling2D())
-model.add(Activation('relu'))
-model.add(Flatten())
-model.add(Dense(128*128, activation='sigmoid'))
-#
-#model.add(Convolution2D(1,3,3, border_mode='same', activation='sigmoid'))
+import keras.optimizers as optimizers
 
-model.compile(optimizer='adadelta',
+model = get_vgg_16()
+
+model.compile(optimizer='adam',
                loss=dice_coef_loss,
                metrics=[dice_coef])
-#model.fit(X_train/255, y_train/255, batch_size=32,
-#          nb_epoch=1000,
-#          validation_data=(X_test/255, y_test/255))
-model.fit(X_train/255, y_train.reshape(y_train.shape[0], 128*128)/255, batch_size=32,
-          nb_epoch=1000,
-          validation_data=(X_test/255, y_test.reshape(y_test.shape[0], 128*128)/255))
-#model = get_simplenet(input_shape)
 model.fit_generator(
         train_generator,
-        samples_per_epoch=2000,
+        samples_per_epoch=len(X_train),
         nb_epoch=100,
         validation_data=test_generator,
-        nb_val_samples=600)
+        nb_val_samples=len(X_test))
         
+model.fit(X_train/255, y_train/255, batch_size=32,
+          nb_epoch=1000,
+          validation_data=(X_test/255, y_test/255))
+          
 score = model.evaluate(X_test, y_test, verbose=0)
 print('Test score:', score[0])
 print('Test accuracy:', score[1])
@@ -316,7 +333,7 @@ a=fig.add_subplot(1,3,2)
 plt.imshow(y_train[0:1,:,:,:].reshape(128,128), cmap='Greys_r')
 #a.set_title('true_label')
 a=fig.add_subplot(1,3,3)
-y_thresholded = model.predict(X_train[0:1,:,:,:]/255.).reshape(128,128) > 0.5
+y_thresholded = model.predict(X_train[0:1,:,:,:]/255.).reshape(128,128)
 plt.imshow(y_thresholded, cmap='Greys_r')
 a.set_title('model_thresh')
 

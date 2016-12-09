@@ -85,10 +85,10 @@ test_files.to_csv("myTestLabels.csv", index=False)
 
 # load training and test data
 X_train = np.array([np.array(Image.open(fname)) for fname in 
-                    [kaggle_dir+"/train_128_clahe/"+f+".png" for f in list(train_files['image'])]])
+                    [kaggle_dir+"/train_128/"+f+".png" for f in list(train_files['image'])]])
 y_train = train_files['level'].as_matrix()
 X_test =  np.array([np.array(Image.open(fname)) for fname in 
-                    [kaggle_dir+"/test_128_clahe/"+f+".png" for f in list(test_files['image'])]])
+                    [kaggle_dir+"/test_128/"+f+".png" for f in list(test_files['image'])]])
 y_test = test_files['level'].as_matrix()
 
 # save numpy arrays
