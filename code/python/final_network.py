@@ -41,23 +41,28 @@ def get_activations(model, layer_num, X_batch):
 """
     Plots feature maps.
 """
-def plot_feature_maps(feature_maps, start_index, end_index):
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+def plot_feature_maps(feature_maps, start_index, end_index, n_cols):
     feature_maps = feature_maps.reshape(feature_maps.shape[1],
-                                        feature_maps.shape[2],
-                                        feature_maps.shape[3])
+                                        feature_maps.shape[2]
+                                        ,feature_maps.shape[3])
     
-    fig = plt.figure()
     end_index = min(end_index, feature_maps.shape[0])
     
     num_plots = end_index - start_index
-    n_rows = num_plots/5
-    n_cols = 5
-    
-    for i in range(num_plots):     
-        a=fig.add_subplot(n_rows,n_cols,i+1)
-        plt.imshow(feature_maps[start_index+i], cmap='Greys_r')
-        a.set_title('fmap'+str(start_index+i))
-        
+    n_rows = num_plots//n_cols
+    plt.figure()
+    gs = gridspec.GridSpec(n_rows, n_cols, top=1., bottom=0., right=1., left=0., hspace=0.,
+        wspace=0.)
+    i=0
+    for g in gs:
+        ax = plt.subplot(g)
+        ax.imshow(feature_maps[start_index+i], cmap='Greys_r')
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_aspect('auto')
+        i=i+1
 
 """
     Dice coefficient calculation and loss. Credit goes to: github.com/jocicmarko/ultrasound-nerve-segmentation/blob/master/train.py#L19

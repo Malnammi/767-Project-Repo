@@ -7,10 +7,10 @@ Purpose: perliminary network for training on optic disk segmentation
         using diaretdb1 dataset.
 """
 
-batch_size = 16
+batch_size = 32
 
 import theano.sandbox.cuda
-theano.sandbox.cuda.use("gpu0")
+theano.sandbox.cuda.use("gpu1")
 
 import h5py
 from PIL import Image
@@ -217,7 +217,6 @@ train_data_gen_args = dict(rotation_range=180,
                     shear_range=0.2,
                     zoom_range=0.2,
                     horizontal_flip=True,
-                    vertical_flip=True,
                     fill_mode='nearest')
 train_image_datagen = ImageDataGenerator(**train_data_gen_args)
 train_mask_datagen = ImageDataGenerator(**train_data_gen_args)
