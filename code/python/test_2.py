@@ -1,16 +1,7 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Nov 13 23:58:05 2016
-
-@author: Moeman
-Purpose: perliminary network for training on optic disk segmentation 
-        using diaretdb1 dataset.
-"""
-
 batch_size = 64
 
 import theano.sandbox.cuda
-theano.sandbox.cuda.use("gpu0")
+theano.sandbox.cuda.use("gpu1")
 
 import h5py
 from PIL import Image
@@ -320,22 +311,14 @@ train_disc = model_disc.predict(disc_conversion(X_train)/255)
 test_disc =  model_disc.predict(disc_conversion(X_test)/255)
 
 #load vess model
-model_vess = get_vess_segnet('weights/vess5.h5')
-
-model_vess.compile(loss=dice_coef_loss, optimizer='adam', 
-              metrics=[dice_coef])        
-
-#generate vess segmented kaggle images
-train_vess = model_vess.predict(vess_conversion(X_train)/255)
-test_vess =  model_vess.predict(vess_conversion(X_test)/255)
 
 #convert kaggle images
 X_train = kaggle_conversion(X_train, 3)/255
 X_test = kaggle_conversion(X_test, 3)/255
 
 #concatenate with kaggle images
-X_train = np.concatenate((X_train, train_vess, train_disc), axis=1)
-X_test = np.concatenate((X_test, test_vess, test_disc), axis=1)
+X_train = np.concatenate((X_train, train_disc), axis=1)
+X_test = np.concatenate((X_test, test_disc), axis=1)
 
 X_train = X_train.astype('float32')
 X_test = X_test.astype('float32')
@@ -343,7 +326,7 @@ X_test = X_test.astype('float32')
 y_train = y_train.astype('float32')
 y_test = y_test.astype('float32')
 
-img_rows, img_cols, img_depth = 128, 128, 5
+img_rows, img_cols, img_depth = 128, 128, 4
 input_shape = (img_depth, img_rows, img_cols)
 
 """################################DATA AUGMENTORS##########################"""
@@ -383,138 +366,44 @@ test_generator = test_image_datagen.flow(
     y_test,
     batch_size=batch_size,
     seed=seed)
-
-
-"""############################MODEL AND TRAINING###########################"""
-"""
-    adapted design from: http://jeffreydf.github.io/diabetic-retinopathy-detection/
-"""
-
-#define model
 model = Sequential()
-model.add(Convolution2D(64, 3, 3, input_shape=input_shape, border_mode='same', activation='relu'))
-model.add(MaxPooling2D())
-model.add(Convolution2D(32, 3, 3, border_mode='same', activation='relu'))
+model.add(ZeroPadding2D((1,1),input_shape=input_shape))
+model.add(Convolution2D(32, 3, 3, activation='relu'))
+model.add(ZeroPadding2D((1,1),input_shape=input_shape))
+model.add(Convolution2D(32, 3, 3, activation='relu'))
+model.add(MaxPooling2D((2,2), strides=(2,2)))
 
+model.add(ZeroPadding2D((1,1)))
+model.add(Convolution2D(64, 3, 3, activation='relu'))
+model.add(ZeroPadding2D((1,1)))
+model.add(Convolution2D(64, 3, 3, activation='relu'))
+model.add(MaxPooling2D((2,2), strides=(2,2)))
 
-model.add(UpSampling2D())
-model.add(Convolution2D(input_shape[0], 1, 1, border_mode='same', activation='sigmoid'))
+model.add(ZeroPadding2D((1,1)))
+model.add(Convolution2D(128, 3, 3, activation='relu'))
+model.add(MaxPooling2D((2,2), strides=(2,2)))
 
-model.add(MaxPooling2D())
-model.add(Convolution2D(32, 3, 3, border_mode='same', activation='relu'))
+model.add(ZeroPadding2D((1,1)))
+model.add(Convolution2D(256, 3, 3, activation='relu'))
+model.add(MaxPooling2D((2,2), strides=(2,2)))
 
-model.add(MaxPooling2D())
-model.add(Convolution2D(16, 3, 3, border_mode='same', activation='relu'))
+model.add(ZeroPadding2D((1,1)))
+model.add(Convolution2D(256, 3, 3, activation='relu'))
+model.add(MaxPooling2D((2,2), strides=(2,2)))
 
-model.load_weights('pretrain.h5')
-
-model.add(UpSampling2D())
-model.add(UpSampling2D())
-model.add(UpSampling2D())
-model.add(Convolution2D(input_shape[0], 1, 1, border_mode='same', activation='sigmoid'))
-
-
+model.add(Flatten())
+model.add(Dense(1024, activation='relu'))
+model.add(Dropout(0.5))
+model.add(Dense(1024, activation='relu'))
+model.add(Dropout(0.5))
+model.add(Dense(5, activation='softmax'))
+from keras.optimizers import SGD
+model.load_weights('G:/767-Project/weights/vgg16_weights.h5')
+input_shape
+sgd = SGD(lr=0.1, decay=1e-6, momentum=0.9, nesterov=True)
 model.compile(loss='mse', optimizer='adam', 
               metrics=['accuracy'])
   
-model.fit(X_train, X_train, batch_size=32,
-          nb_epoch=1,
-          validation_data=(X_test, X_test))
-
-
-[<keras.layers.convolutional.Convolution2D at 0x1b03d4d5550>,
- <keras.layers.pooling.MaxPooling2D at 0x1b058c72668>,
- <keras.layers.convolutional.Convolution2D at 0x1b058c726a0>,
- <keras.layers.pooling.MaxPooling2D at 0x1b0424116a0>,
- <keras.layers.convolutional.Convolution2D at 0x1b0424115f8>,
- <keras.layers.pooling.MaxPooling2D at 0x1b07a0994e0>,
- <keras.layers.convolutional.Convolution2D at 0x1b07a099550>,
- <keras.layers.convolutional.UpSampling2D at 0x1b08d893128>,
- <keras.layers.convolutional.UpSampling2D at 0x1b08d893ac8>,
- <keras.layers.convolutional.UpSampling2D at 0x1b08d872400>,
- <keras.layers.convolutional.Convolution2D at 0x1b08d8725f8>]
-
-model = Sequential()
-model.add(Convolution2D(64, 3, 3, input_shape=input_shape, border_mode='same', activation='relu'))
-model.add(MaxPooling2D())
-model.add(Convolution2D(32, 3, 3, border_mode='same', activation='relu'))
-
-
-model.add(MaxPooling2D())
-model.add(Convolution2D(32, 3, 3, border_mode='same', activation='relu'))
-
-model.add(MaxPooling2D())
-model.add(Convolution2D(16, 3, 3, border_mode='same', activation='relu'))
-
-model.load_weights('pretrain.h5')
-
-model.add(Flatten())
-model.add(Dense(64, activation='relu'))
-model.add(Dropout(0.5))
-model.add(Dense(64, activation='relu'))
-model.add(Dropout(0.5))
-model.add(Dense(nb_classes, activation='softmax'))
-
-import keras.optimizers as optimizers
-model.compile(loss='categorical_crossentropy', optimizer=optimizers.SGD(lr=1e-3, momentum=0.9),
-              metrics=['accuracy'])
-  
-model.fit(X_train, y_train, batch_size=200,
-          nb_epoch=100,
+model.fit(X_train, y_train, batch_size=512,
+          nb_epoch=30,
           validation_data=(X_test, y_test))
-  
-model.fit(X_train, y_train, batch_size=32,
-          nb_epoch=1,
-          validation_data=(X_test, y_test))
-          
-model.fit_generator(
-        train_generator,
-        samples_per_epoch=len(X_train),
-        nb_epoch=100,
-        validation_data=test_generator,
-        nb_val_samples=len(X_test))
-  
-model.fit(X_train/255, y_train, batch_size=32,
-          nb_epoch=1,
-          validation_data=(X_test/255, y_test))
-          
-          
-fig = plt.figure()
-a=fig.add_subplot(2,2,1)
-plt.imshow(X_train[0:1,0:3,:].reshape(128,128,3))
-a.set_title('input_image_rgb')
-a=fig.add_subplot(2,2,2)
-plt.imshow(out[0,0:3,:].reshape(128,128,3))
-a.set_title('autoencoder_rgb')
-
-a=fig.add_subplot(2,2,3)
-plt.imshow(X_train[0:1,3,:].reshape(128,128), cmap='Greys_r')
-a.set_title('input_image_disc_mask')
-a=fig.add_subplot(2,2,4)
-plt.imshow(out[0,3,:].reshape(128,128), cmap='Greys_r')
-a.set_title('autoencoder_disc_mask')      
-          
-fig = plt.figure()
-a=fig.add_subplot(1,2,1)
-plt.imshow(X_train[0:1,:,:,:].reshape(128,128,3)/255)
-a.set_title('input_image')
-a=fig.add_subplot(1,2,2)
-y_thresholded = model.predict(X_train[0:1,:,:,:]/255.).reshape(128,128) > 0.5
-plt.imshow(y_thresholded, cmap='Greys_r')
-a.set_title('model_thresh')
-
-fig = plt.figure()
-a=fig.add_subplot(1,2,1)
-plt.imshow(X_test[0:1,:,:,:].reshape(128,128,3)/255)
-a.set_title('input_image')
-a=fig.add_subplot(1,2,2)
-y_thresholded = model.predict(X_test[0:1,:,:,:]/255.).reshape(128,128) > 0.5
-plt.imshow(y_thresholded, cmap='Greys_r')
-a.set_title('model_thresh')
-
-feature_maps = get_activations(model, 1, X_train[0:1])
-plot_feature_maps(feature_maps, 0, 10)
-
-quadratic_weighted_kappa(np.argmax(y_train, axis=1), np.argmax(model.predict(X_train), axis=1))
-
-quadratic_weighted_kappa(np.argmax(y_test, axis=1), np.argmax(model.predict(X_test), axis=1))
