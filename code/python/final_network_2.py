@@ -397,42 +397,25 @@ model.add(MaxPooling2D())
 model.add(Convolution2D(32, 3, 3, border_mode='same', activation='relu'))
 
 
-model.add(UpSampling2D())
-model.add(Convolution2D(input_shape[0], 1, 1, border_mode='same', activation='sigmoid'))
-
 model.add(MaxPooling2D())
 model.add(Convolution2D(32, 3, 3, border_mode='same', activation='relu'))
 
 model.add(MaxPooling2D())
 model.add(Convolution2D(16, 3, 3, border_mode='same', activation='relu'))
 
-model.load_weights('pretrain.h5')
 
 model.add(UpSampling2D())
 model.add(UpSampling2D())
 model.add(UpSampling2D())
 model.add(Convolution2D(input_shape[0], 1, 1, border_mode='same', activation='sigmoid'))
 
-
 model.compile(loss='mse', optimizer='adam', 
               metrics=['accuracy'])
   
-model.fit(X_train, X_train, batch_size=32,
-          nb_epoch=1,
+model.fit(X_train, X_train, batch_size=400,
+          nb_epoch=100,
           validation_data=(X_test, X_test))
 
-
-[<keras.layers.convolutional.Convolution2D at 0x1b03d4d5550>,
- <keras.layers.pooling.MaxPooling2D at 0x1b058c72668>,
- <keras.layers.convolutional.Convolution2D at 0x1b058c726a0>,
- <keras.layers.pooling.MaxPooling2D at 0x1b0424116a0>,
- <keras.layers.convolutional.Convolution2D at 0x1b0424115f8>,
- <keras.layers.pooling.MaxPooling2D at 0x1b07a0994e0>,
- <keras.layers.convolutional.Convolution2D at 0x1b07a099550>,
- <keras.layers.convolutional.UpSampling2D at 0x1b08d893128>,
- <keras.layers.convolutional.UpSampling2D at 0x1b08d893ac8>,
- <keras.layers.convolutional.UpSampling2D at 0x1b08d872400>,
- <keras.layers.convolutional.Convolution2D at 0x1b08d8725f8>]
 
 model = Sequential()
 model.add(Convolution2D(64, 3, 3, input_shape=input_shape, border_mode='same', activation='relu'))
@@ -446,8 +429,6 @@ model.add(Convolution2D(32, 3, 3, border_mode='same', activation='relu'))
 model.add(MaxPooling2D())
 model.add(Convolution2D(16, 3, 3, border_mode='same', activation='relu'))
 
-model.load_weights('pretrain.h5')
-
 model.add(Flatten())
 model.add(Dense(64, activation='relu'))
 model.add(Dropout(0.5))
@@ -455,9 +436,15 @@ model.add(Dense(64, activation='relu'))
 model.add(Dropout(0.5))
 model.add(Dense(nb_classes, activation='softmax'))
 
+
+
 import keras.optimizers as optimizers
 model.compile(loss='categorical_crossentropy', optimizer=optimizers.SGD(lr=1e-3, momentum=0.9),
               metrics=['accuracy'])
+              
+              
+
+model.load_weights('pretrain444.h5')
   
 model.fit(X_train, y_train, batch_size=200,
           nb_epoch=100,
@@ -478,7 +465,8 @@ model.fit(X_train/255, y_train, batch_size=32,
           nb_epoch=1,
           validation_data=(X_test/255, y_test))
           
-          
+
+out = model.predict(X_train[0:1,:])
 fig = plt.figure()
 a=fig.add_subplot(2,2,1)
 plt.imshow(X_train[0:1,0:3,:].reshape(128,128,3))
